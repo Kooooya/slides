@@ -1,0 +1,410 @@
+Goroutine Patterns
+2017/8/18 #cm_osaka
+
+Koya Fukushi
+Eureka, Inc. Developer
+https://github.com/Kooooya/
+
+* Introduction
+
+* What is the Goroutine?
+
+.link https://golang.org/doc/effective_go.html#goroutines https://golang.org/doc/effective_go.html#goroutines
+
+They're called goroutines because the existing terms—threads, coroutines, processes, and so on—convey inaccurate connotations. A goroutine has a simple model: it is a function executing concurrently with other goroutines in the same address space. It is lightweight, costing little more than the allocation of stack space. And the stacks start small, so they are cheap, and grow by allocating (and freeing) heap storage as required.
+
+* What is the Goroutine?
+
+.link Google翻訳 Google翻訳
+
+既存の用語（スレッド、コルーチン、プロセスなど）が不正確な意味を伝えるため 、それらはgoroutineと呼ばれています。
+ゴルーチンにはシンプルなモデルがあります。これは同じアドレス空間内の他のゴルーチンと同時に実行される関数です。軽量で、スタックスペースの割り当てよりもコストがかかりません。また、スタックのサイズは小さいので、安価であり、必要に応じてヒープストレージを割り当て（および解放）することで成長します。
+
+* What is the Goroutine?
+
+.link Google翻訳 Google翻訳
+
+*既存の用語（スレッド、コルーチン、プロセスなど）が不正確な意味を伝えるため、それらはgoroutineと呼ばれています。*
+ゴルーチンにはシンプルなモデルがあります。これは同じアドレス空間内の他のゴルーチンと同時に実行される関数です。軽量で、スタックスペースの割り当てよりもコストがかかりません。また、スタックのサイズは小さいので、安価であり、必要に応じてヒープストレージを割り当て（および解放）することで成長します。
+
+* What is the Goroutine?
+
+- 既存の並列プログラミングのモデルとは別物
+- OSのスレッド上で多重化されている
+- 詳しくは
+
+.link https://morsmachine.dk/go-scheduler
+.link http://blog.nindalf.com/how-goroutines-work/
+
+* What is the Goroutine?
+
+はじめの一歩
+
+.play goroutine_patterns/goroutine_basic.go
+
+* Communicating
+* Communicating
+
+.link https://golang.org/doc/effective_go.html#sharing https://golang.org/doc/effective_go.html#sharing
+
+Do not communicate by sharing memory; instead, share memory by communicating.
+
+.link Google翻訳 Google翻訳
+
+メモリを共有して通信してはいけません。かわりに、通信によってメモリを共有してください。
+
+* Communicating
+
+Goの並行プログラミングモデルは
+
+- CSP(Communicating sequential processes)がルーツ
+- *channel* を介してメッセージを受け渡し（メッセージパッシング）
+
+* Communicating
+
+.play goroutine_patterns/channel_basic.go
+
+* Patterns
+
+* Returns a channel
+
+- channelは第一級オブジェクト
+- channelは関数の戻り値にできる
+
+.play goroutine_patterns/returns_channel.go /Say/,/Println/
+.code goroutine_patterns/returns_channel.go /func Say/,/^\}/
+
+* Multiplexing
+
+- 複数のchannelを使用する
+- このままだとchannel毎に同期的
+
+.play goroutine_patterns/returns_multi_channels.go /Say/,/Println/
+.code goroutine_patterns/returns_multi_channels.go /func Say/,/^\}/
+
+* Fan-in
+
+.link https://talks.golang.org/2012/concurrency.slide#28
+
+- 複数のchanneを１つにまとめる
+- 完全に非同期的
+
+.play goroutine_patterns/fan_in.go /Say/,/Println/
+.code goroutine_patterns/fan_in.go /func FanIn/,/^\}/
+
+* Select
+
+- 複数のchannelからの入出力を制御
+- 同時の場合ランダムな順で実行
+- 入出力がない場合ブロック
+- default句があり、入出力が検知できなかったときに、default句が直ちに実行される
+
+  select {
+  case v1 := <-c1:
+      fmt.Printf("received %v from c1\n", v1)
+  case v2 := <-c2:
+      fmt.Printf("received %v from c2\n", v1)
+  case c3 <- 23:
+      fmt.Printf("sent %v to c3\n", 23)
+  default:
+      fmt.Printf("no one was ready to communicate\n")
+  }
+
+* Fan-in Again
+
+一つのgoroutineにまとめる
+
+.play goroutine_patterns/fan_in_again.go /func FanIn/,/^\}/
+
+* Daisy-chain
+
+.link https://talks.golang.org/2012/concurrency.slide#40
+
+.play goroutine_patterns/daisy_chain.go
+
+* Restricted Concurrency
+
+goroutineの最小のスタックサイズは 2048バイトととても軽量
+
+* Restricted Concurrency
+
+- だからといって闇雲にgoステートメントで多重化していると…
+
+.code goroutine_patterns/increase_goroutine.go /for i/,/}/
+.code goroutine_patterns/increase_goroutine.go /^func Log/,/}/
+
+* Restricted Concurrency
+
+  2017/08/12 21:33:32 Mem = 1740800B
+  2017/08/12 21:33:32 Goroutines: 33
+  2017/08/12 21:33:33 Mem = 233392376B
+  2017/08/12 21:33:33 Goroutines: 83218
+  2017/08/12 21:33:34 Mem = 439296272B
+  2017/08/12 21:33:34 Goroutines: 158467
+  2017/08/12 21:33:35 Mem = 677046464B
+  2017/08/12 21:33:35 Goroutines: 243806
+  2017/08/12 21:33:36 Mem = 923726016B
+  2017/08/12 21:33:36 Goroutines: 336502
+
+.image goroutine_leak.png
+
+* Restricted Concurrency
+
+- 際限なくリソースが消費される
+- *goroutineの数を制御する必要がある*
+
+* Buffered Channels
+
+- makeでchannelを作成するときに、第２引数にchannelのlengthを指定することができる(Buffered Channels)
+- 空のときに送信しようとするとブロックする
+- 一杯のときに受信しようとするとブロックする
+
+  ch := make(chan int, 100)
+
+.link https://tour.golang.org/concurrency/3
+
+* Restricted Concurrency
+
+ticket方式
+
+.play goroutine_patterns/restricted_concurrency_0.go /maxNum/,/^\t\}/
+.code goroutine_patterns/restricted_concurrency_0.go /func makeTicket/,/^\}/
+
+* Restricted Concurrency
+
+  2017/08/12 20:21:40 Mem = 1740800B
+  2017/08/12 20:21:40 Goroutines: 31
+  2017/08/12 20:21:41 Mem = 1740800B
+  2017/08/12 20:21:41 Goroutines: 52
+  2017/08/12 20:21:42 Mem = 1740800B
+  2017/08/12 20:21:42 Goroutines: 52
+  2017/08/12 20:21:43 Mem = 1740800B
+  2017/08/12 20:21:43 Goroutines: 52
+  2017/08/12 20:21:44 Mem = 1740800B
+  2017/08/12 20:21:44 Goroutines: 52
+  2017/08/12 20:21:45 Mem = 1740800B
+  2017/08/12 20:21:45 Goroutines: 52
+
+※ 2つ多いのは、main関数とトレース用の関数
+
+* Restricted Concurrency
+
+worker方式
+
+.play goroutine_patterns/restricted_concurrency_1.go /maxNum/,/^\t\}/
+.code goroutine_patterns/restricted_concurrency_1.go /for i := 0; ;/,/^\t\}/
+
+* Restricted Concurrency
+
+  2017/08/12 21:41:11 Mem = 1740800B
+  2017/08/12 21:41:11 Goroutines: 52
+  2017/08/12 21:41:12 Mem = 1740800B
+  2017/08/12 21:41:12 Goroutines: 52
+  2017/08/12 21:41:13 Mem = 1740800B
+  2017/08/12 21:41:13 Goroutines: 52
+  2017/08/12 21:41:14 Mem = 1740800B
+  2017/08/12 21:41:14 Goroutines: 52
+  2017/08/12 21:41:15 Mem = 1740800B
+  2017/08/12 21:41:15 Goroutines: 52
+  2017/08/12 21:41:16 Mem = 1740800B
+  2017/08/12 21:41:16 Goroutines: 52
+
+* Wait
+
+- 実行結果は？
+
+.play goroutine_patterns/exit_immediately.go
+
+* WaitGroup
+
+- goroutineが終わるのを待つための構造体
+- Addで待機するgoroutine分のカウンタをセット
+- Doneでカウンタをデクリメント
+- Waitでカウンタが0になるまでブロック
+
+  var wg sync.WaitGroup
+  wg.Add(10)
+  wg.Done()
+  wg.Wait()
+
+* Wait
+
+.play goroutine_patterns/wait_exit.go
+
+* Goroutine Leak
+
+- goroutineはGCの対象にならない
+- 自分で開放する必要がある
+
+  for i := 0; i < 50; i++ {
+          go LaunchWorker(c)
+  }
+
+  func LaunchWorker(c chan int) {
+          for {
+                  select {
+                  case v <- c:
+                          // do something
+                  }
+          }
+  }
+
+
+* Quit Channel
+
+.code goroutine_patterns/quit_channels.go /var \(/,/true\n\t\}/
+.code goroutine_patterns/quit_channels.go /func LaunchWorker/,/^\}/
+
+* Timeout
+
+.link https://golang.org/pkg/time/#After
+- dが経過した後にtime.Timeを送信するchannelを返す
+
+  func After(d Duration) <-chan Time
+
+* Timeout
+
+- selectの中で作成すると各処理に対してtimeoutを設定できる
+
+.play goroutine_patterns/timeout_0.go /c := make/,/^\t\}/
+.code goroutine_patterns/timeout_0.go /func DoSomething/,/^\}/
+
+* Timeout
+
+- selectの外で作成するとループ全体に対してtimeoutを設定できる
+
+.play goroutine_patterns/timeout_1.go /c := make/,/^\t\}/
+.code goroutine_patterns/timeout_1.go /func DoSomething/,/^\}/
+
+* Ticker
+
+.link https://golang.org/pkg/time/#Tick
+- dが経過する毎にtime.Timeを送信するchannelを返す
+
+  c := time.Tick(1 * time.Minute)
+  for now := range c {
+          fmt.Printf("%v %s\n", now, statusUpdate())
+  }
+
+* Ticker
+
+基本形
+
+.play goroutine_patterns/tick_0.go /TickTack/,/^\t\}/
+.code goroutine_patterns/tick_0.go /func TickTack/,/^\}/
+
+* Ticker
+
+複数Ticker
+
+.play goroutine_patterns/tick_1.go /TickTack/,/^\t\}/
+.code goroutine_patterns/tick_1.go /func TickTack/,/^\}/
+
+* Context
+
+.link https://golang.org/pkg/context/
+- タイムアウトやキャンセル用のシグナルを運ぶ構造体
+- go1.7から標準パッケージの仲間入り
+
+* Quit Channel Again
+
+.code goroutine_patterns/quit_channels.go /var \(/,/true\n\t\}/
+.code goroutine_patterns/quit_channels.go /func LaunchWorker/,/^\}/
+
+* Quit Channel Again
+
+.code goroutine_patterns/context_quit_channels.go /var \(/,/fmt.Println/
+.code goroutine_patterns/context_quit_channels.go /func LaunchWorker/,/^\}/
+
+* Timeout Again
+
+.play goroutine_patterns/timeout_1.go /c := make/,/^\t\}/
+.code goroutine_patterns/timeout_1.go /func DoSomething/,/^\}/
+
+* Timeout Again
+
+.play goroutine_patterns/context_timeout.go /c := make/,/^\t\}/
+.code goroutine_patterns/context_timeout.go /func DoSomething/,/^\}/
+
+* Shared Memory
+
+- メモリ共有で通信したいときもある
+- Singleton、Configなどなど
+- channelはちょっと大げさだな、、
+
+* Race Condition
+
+- 単純にメモリを共有するとレースコンディションが起きる
+
+.play goroutine_patterns/race_condition.go
+
+* Race Condition
+
+  $ go run -race goroutine_patterns/race_condition.go
+
+  ==================
+  WARNING: DATA RACE
+  Read at 0x000000101b38 by goroutine 6:
+    main.main.func1()
+        /.../go/src/github.com/Kooooya/slides/goroutine_patterns/race_condition.go:8 +0x3d
+  
+  Previous write at 0x000000101b38 by goroutine 5:
+    main.main.func1()
+        /.../go/src/github.com/Kooooya/slides/goroutine_patterns/race_condition.go:8 +0x59
+  
+  Goroutine 6 (running) created at:
+    main.main()
+        /.../go/src/github.com/Kooooya/slides/goroutine_patterns/race_condition.go:9 +0x51
+  
+  Goroutine 5 (finished) created at:
+    main.main()
+        /.../go/src/github.com/Kooooya/slides/goroutine_patterns/race_condition.go:9 +0x51
+  ==================
+  Found 1 data race(s)
+  exit status 66
+
+* Mutex
+
+.link https://golang.org/pkg/sync/#Mutex
+- 排他ロック用の構造体
+
+  m := new(sync.Mutex)
+  m.Lock()
+  u = NewUser()
+  m.Unlock()
+
+* Mutex
+
+.play goroutine_patterns/mutex_0.go
+
+* Summary
+
+- Returns a channel
+- Fan-in
+- Daisy-chain
+- Restricted Concurrency
+- Wait (WaitGroup)
+- Quit Channel
+- Timeout
+- Ticker
+- Context
+- Mutex
+
+* Links
+
+Advanced Go Concurrency Patterns
+
+.link https://talks.golang.org/2013/advconc.slide
+
+Go Concurrency Patterns
+
+.link https://talks.golang.org/2012/chat.slide
+
+Go Concurrency Patterns: Pipelines and cancellation
+
+.link https://blog.golang.org/pipelines
+
+LearnConcurrency
+
+.link https://github.com/golang/go/wiki/LearnConcurrency
+
