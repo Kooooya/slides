@@ -1,0 +1,315 @@
+Debugging Go with GDB
+2017/8/28 #golangtokyo
+
+Koya Fukushi
+Eureka, Inc. Developer
+https://github.com/Kooooya/
+
+* Who am I?
+
+- 福士 倖也と申します
+- Pairs のサーバーサイド・フロントエンド
+.link https://www.pairs.lv/
+- 大学時代はのほほんとヨットに乗ってました
+.link https://www.google.co.jp/search?biw=1315&bih=736&tbm=isch&sa=1&q=%E3%83%A8%E3%83%83%E3%83%88&oq=%E3%83%A8%E3%83%83%E3%83%88&gs_l=psy-ab.3...0.0.0.6966.0.0.0.0.0.0.0.0..0.0....0...1..64.psy-ab..0.0.0.DovgZ26-inI ヨット画像
+- 青森出身です
+
+* Introduction
+
+* Introduction
+
+- 皆さんデバッグツール使ってますか？
+
+* Introduction
+
+- 地道にPrintデバッグしてませんか？
+
+  ....
+  fmt.Println("A")
+  fmt.Println(user.ID)
+  ....
+
+* Introduction
+
+- 大量のlogの中から探し出さないといけない
+- 毎回buildしなければいけない
+- デバッグコードをcommitしてしまうことがある
+
+時間がかかりそうならデバッガを使うべき
+
+* What is GDB
+
+* What is GDB
+
+*GDB* (GNU Debugger)はFSF(フリーソフトウェア財団)が配布しているUNIXシステムのプログラムデバッグツール
+
+以下のことができる
+
+- ブレークポイントを設定
+- バックトレースなど実行時の状態の表示
+- 実行中のプログラムの変数の書き換え
+
+* What is GDB
+
+GccgoがGDBをサポートしている
+
+https://golang.org/doc/gdb
+
+* How to install GDB
+
+Macの場合installが少し面倒くさい
+
+  (gdb) b 7
+  Breakpoint 1 at 0x206f: file /.../repos/src/github.com/Kooooya/ground/gdb/01.go, line 7.
+  (gdb) run
+  Starting program: /.../src/github.com/Kooooya/ground/gdb/01
+  Unable to find Mach task port for process-id 12160: (os/kern) failure (0x5).
+   (please check gdb is codesigned - see taskgated(8))
+
+
+.link http://qiita.com/kaityo256/items/d2f7ac7acc42cf2098b2 macOS Sierraでgdbを使う
+
+↑のリンクを参考にinstallしてみて下さい
+
+* How to debug
+
+* How to debug
+
+起動する
+
+  $ go build -gcflags "-N -l" hoge.go # ← デバッグが難しくなるので最適化をオフにする
+  $ gdb hoge
+  GNU gdb (GDB) 8.0
+  Copyright (C) 2017 Free Software Foundation, Inc.
+  .....
+  Loading Go Runtime support.
+  (gdb)
+
+* How to debug
+
+以下のコマンドがよく使われます
+
+- list
+- break
+- run
+- continue
+- delete
+- backtrace
+- info
+- print
+
+* list command
+
+行、ファイル名を指定してソースコードを表示
+
+  (gdb) list
+  (gdb) list line
+  (gdb) l line
+  (gdb) list file.go:line
+
+Example:
+
+  (gdb) l 01.go:8
+  3	import "fmt"
+  4
+  5	func main() {
+  6		say()
+  7	}
+  8
+  9	func say() {
+  10		const n = 10000
+  11		for i := 0; i < n; i++ {
+  12			fmt.Println(i)}}
+
+* break command
+
+ブレークポイントを設定
+
+  (gdb) break line
+  (gdb) b line
+  (gdb) break file.go:line
+
+Example:
+
+  (gdb) b 01.go:8
+  Note: breakpoint 1 also set at pc 0x208c.
+  Breakpoint 2 at 0x208c: file /.../src/github.com/Kooooya/ground/gdb/01.go, line 8.
+
+* run command
+
+プログラムを実行
+
+  (gdb) run
+  (gdb) r
+
+Example:
+
+  (gdb) b 02.go:6
+  Breakpoint 1 at 0x20f4: file /.../src/github.com/Kooooya/ground/gdb/02.go, line 6.
+  (gdb) run
+  Starting program: /.../src/github.com/Kooooya/ground/gdb/01
+  [New Thread 0x1403 of process 15902]
+  warning: unhandled dyld version (15)
+  [New Thread 0x1207 of process 15902]
+  [New Thread 0x1503 of process 15902]
+  [New Thread 0x1603 of process 15902]
+  [New Thread 0x1703 of process 15902]
+  
+  Thread 2 hit Breakpoint 1, main.Hoge (i=0) at /.../src/github.com/Kooooya/ground/gdb/02.go:6
+  6		fmt.Println(i)
+  (gdb)
+
+* continue command
+
+次のブレークポイントまで実行
+
+  (gdb) continue
+  (gdb) c
+
+Example:
+  
+  (gdb) c
+  Continuing.
+
+  Thread 2 hit Breakpoint 1, main.Hoge (i=7) at /.../src/github.com/Kooooya/ground/gdb/02.go:6
+  6		fmt.Println(i)
+  (gdb)
+
+* delete command
+
+ブレークポイントを削除
+引数のnumは `info breakpoints` で対応する番号
+
+  (gdb) d num
+  (gdb) delete num
+
+Example:
+
+  (gdb) info breakpoints
+  Num     Type           Disp Enb Address            What
+  1       breakpoint     keep y   0x00000000000020f4 in main.Hoge at /.../src/github.com/Kooooya/ground/gdb/02.go:6
+  	breakpoint already hit 9 times
+  (gdb) d 1
+
+* backtrace
+
+バックトレースの出力
+
+  (gdb) bt
+  (gdb) backtrace -n
+  (gdb) bt n
+
+Example:
+
+  (gdb) run
+  Starting program: /.../src/github.com/Kooooya/ground/gdb/01
+  ....
+  Thread 2 hit Breakpoint 2, main.Hoge (i=0) at /.../src/github.com/Kooooya/ground/gdb/02.go:6
+  6		fmt.Println(i)
+  (gdb) bt
+  #0  main.Hoge (i=0) at /.../src/github.com/Kooooya/ground/gdb/02.go:6
+  #1  0x00000000000020a5 in main.say () at /.../src/github.com/Kooooya/ground/gdb/01.go:10
+  #2  0x0000000000002054 in main.main () at /.../src/github.com/Kooooya/ground/gdb/01.go:4
+
+* info command
+
+global変数
+
+  (gdb) info variables
+  ....
+  error io.EOF;
+  error io.ErrClosedPipe;
+  error io.ErrNoProgress;
+  ....
+
+local変数
+
+  (gdb) info locals
+  i = 987
+
+引数
+
+  (gdb) info args
+  i = 987
+
+* info command
+
+ブレークポイント一覧
+
+  (gdb) info breakpoints
+  Num     Type           Disp Enb Address            What
+  1       breakpoint     keep y   0x00000000000020f4 in main.Hoge at /.../src/github.com/Kooooya/ground/gdb/02.go:6
+  	breakpoint already hit 1 time
+  2       breakpoint     keep y   0x0000000000002097 in main.say at /.../src/github.com/Kooooya/ground/gdb/01.go:10
+
+* info command
+
+goroutine一覧
+
+  (gdb) info goroutines
+  * 1 running  syscall.Syscall6 ← * が先頭についているものは現在実行中
+    2 waiting  runtime.gopark
+    3 waiting  runtime.gopark
+    4 waiting  runtime.gopark
+  (gdb) goroutine 3 bt
+  #0  runtime.gopark (unlockf={void (struct runtime.g *, void *, bool *)} 0xc420024f38, lock=0xf7d80 <runtime.sweep>,
+      reason="GC sweep wait", traceEv=20 '\024', traceskip=1) at /usr/local/go/src/runtime/proc.go:260
+  #1  0x0000000000028f0e in runtime.goparkunlock (lock=0xf7d80 <runtime.sweep>, reason="GC sweep wait", traceEv=20 '\024', traceskip=1)
+      at /usr/local/go/src/runtime/proc.go:265
+  #2  0x000000000001baa6 in runtime.bgsweep (c=0xc42004c000) at /usr/local/go/src/runtime/mgcsweep.go:63
+  #3  0x00000000000517e1 in runtime.goexit () at /usr/local/go/src/runtime/asm_amd64.s:2086
+  #4  0x000000c42004c000 in ?? ()
+  #5  0x0000000000000000 in ?? ()
+  (gdb) goroutine 3 info locals
+  mp = 0xc42002a800
+  gp = 0xc420000b60
+
+* print command
+
+変数またはその他の情報を表示する
+
+  (gdb) print var
+  (gdb) p var
+  (gdb) p $len(var)
+
+Example:
+
+  (gdb) p i
+  $5 = 31
+  (gdb) p &i
+  $6 = (int *) 0xc42003bf18
+  (gdb) p $len(s)
+  $2 = 11
+  (gdb) p $cap(s)
+  $1 = 20
+
+
+* How to debug
+
+他にも以下のコマンドなどがあります
+
+- whatis ← 変数の型を表示
+- disas  ← 逆アセンブル
+- watch  ← ウォッチポイント設定
+- set variable ← 変数書き換え
+
+ステップ実行
+
+- step
+- next
+- until
+- finish
+
+* まとめ
+
+- デバッグツールを使うことで、何時間もfmt.Printlnを書くことがなくなるかも？
+- とは言えPrintデバッグで事足りることもある。トレードオフで
+
+* 感想
+
+- tab補完が効くのが気持ち良い
+- cheatsheet良い
+.link http://darkdust.net/files/GDB%20Cheat%20Sheet.pdf
+- HTTP Serverのデバッグどうするの？
+.link https://github.com/derekparker/delve
+が良さそう
