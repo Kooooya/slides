@@ -1,0 +1,170 @@
+Go Escape Analysis
+2017/8/29
+
+Koya Fukushi
+Eureka, Inc. Developer
+https://github.com/Kooooya/
+
+* エスケープ解析とは？
+
+- サブルーチンにおいて変数やオブジェクトが割り当てられるとき、変数へのポインタが、別の実行スレッドや呼び出し元のルーチンに「エスケープ」してしまうことがある。
+- オブジェクトがサブルーチン内で割り当てられ、オブジェクトへのポインタがエスケープしなければ、そのオブジェクトはヒープの代わりにスタックに割り当てる候補になる。
+
+.link https://ja.wikipedia.org/wiki/エスケープ解析 https://ja.wikipedia.org/wiki/エスケープ解析
+
+* やってみる
+
+.code sample/escape_analysis.go
+
+* やってみる
+
+- -m エスケープ解析を出力
+- -l 関数のインライン化を無効（今回は例をわかりやすくするために）
+
+  $ go run -gcflags '-m -l' escape_analysis.go
+  $
+
+最初の例は何も出力されない（エスケープが無い）
+
+* やってみる
+
+.code sample/escape_analysis1.go
+
+* やってみる
+
+  $ go run -gcflags '-m -l' escape_analysis1.go
+  # command-line-arguments
+  ./escape_analysis1.go:11: leaking param: z to result ~r1 level=0
+  ./escape_analysis1.go:7: main &x does not escape
+
+- goは関数の引数は値渡しなので、identityにzのコピーが渡される
+- けどzはidentityで参照されていないのでエスケープされなかった
+
+* やってみる
+
+.code sample/escape_analysis2.go
+
+* やってみる
+
+  $ go run -gcflags '-m -l' escape_analysis2.go
+  # command-line-arguments
+  ./escape_analysis2.go:11: &z escapes to heap
+  ./escape_analysis2.go:10: moved to heap: z
+
+- refはzの参照を返すから、zはrefのスタックフレームに入らない
+- mainにも見えるようにヒープに格納される
+
+* やってみる
+
+.code sample/escape_analysis3.go
+
+* やってみる
+
+  $ go run -gcflags '-m -l' escape_analysis3.go
+  # command-line-arguments
+  ./escape_analysis3.go:13: &y escapes to heap
+  ./escape_analysis3.go:12: moved to heap: y
+
+- 構造体のフィールドであってもエスケープされる
+
+* やってみる
+
+.code sample/escape_analysis4.go
+
+* やってみる
+
+  $ go run -gcflags '-m -l' escape_analysis4.go
+  # command-line-arguments
+  ./escape_analysis4.go:12: leaking param: y to result z level=0
+  ./escape_analysis4.go:9: main &i does not escape
+
+- mainのスタックフレーム内の参照だから、refStructのz.yの値は知っている
+- 参照が循環される。エスケープされない
+
+* やってみる
+
+.code sample/escape_analysis5.go
+
+* やってみる
+
+  $ go run -gcflags '-m -l' escape_analysis5.go
+  # command-line-arguments
+  ./escape_analysis5.go:13: leaking param: y
+  ./escape_analysis5.go:13: ref z does not escape
+  ./escape_analysis5.go:10: &i escapes to heap
+  ./escape_analysis5.go:9: moved to heap: i
+  ./escape_analysis5.go:10: main &x does not escape
+
+- 入力された構造体に代入している
+- 解析での入力は出力の値に対してのみ許可されている
+
+* やってみる
+
+.code sample/escape_analysis6.go
+
+* やってみる
+
+  $ go run -gcflags '-m -l' escape_analysis6.go
+  # command-line-arguments
+  ./escape_analysis6.go:13: &i[0] escapes to heap
+  ./escape_analysis6.go:12: moved to heap: i
+
+- 配列は一つの要素でもエスケープされてしまうと、全体もエスケープされる
+- 一つもエスケープされないと、スタックフレームに乗る
+
+* やってみる
+
+.code sample/escape_analysis7.go
+
+* やってみる
+
+  $ go run -gcflags '-m -l' escape_analysis7.go
+  # command-line-arguments
+  ./escape_analysis7.go:14: &_i escapes to heap
+  ./escape_analysis7.go:13: moved to heap: _i
+
+- _iだけエスケープされた。
+- slice全体じゃないので効率的
+
+* やってみる
+
+.code sample/escape_analysis8.go
+
+* やってみる
+
+  $ go test -gcflags="-m -l" -bench=. escape_analysis8.go
+  # command-line-arguments
+  ./escape_analysis8.go:9: &v escapes to heap
+  ./escape_analysis8.go:6: moved to heap: v
+  ./escape_analysis8.go:8: main make(map[int]*S) does not escape
+
+- mapのvalueにセットされたポインターは常にエスケープされる
+
+* やってみる
+
+.code sample/escape_analysis9.go
+
+* やってみる
+
+  $ go test -gcflags="-m -l" -bench=. escape_analysis8.go
+  # command-line-arguments
+  ./escape_analysis9.go:9: &v escapes to heap
+  ./escape_analysis9.go:6: moved to heap: v
+  ./escape_analysis9.go:8: main []*S literal does not escape
+
+- sliceのvalueにセットされたポインターは常にエスケープされる
+
+* まとめ
+
+- stackを有効に使うことで高速化が可能
+- -gcflags="-m"をつけることでエスケープ解析を出力できる
+- mapとsliceには要注意
+
+* Links
+
+Golang Escape Analisis
+.link http://blog.rocana.com/golang-escape-analysis
+
+Go Escape Analysis Flaws
+.link https://docs.google.com/document/d/1CxgUBPlx9iJzkz9JWkb6tIpTe5q32QDmz8l0BouG0Cw/preview#
+
